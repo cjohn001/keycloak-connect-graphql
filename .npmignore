@@ -6,6 +6,7 @@ examples/
 scripts/
 src/
 test/
+coverage/
 .gitignore
 renovate.json
 tsconfig.*

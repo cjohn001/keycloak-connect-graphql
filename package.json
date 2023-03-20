@@ -1,6 +1,6 @@
 {
   "name": "@dbateman/keycloak-connect-graphql",
-  "version": "16.9.0",
+  "version": "16.9.1",
   "description": "Add Keycloak authentication and authorization to your GraphQL server via schema directives.",
   "keywords": [
     "graphql",
