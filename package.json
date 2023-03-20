@@ -22,8 +22,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
-    "build:clean": "tsc tsconfig.build.json --clean",
+    "build": "tsc --build tsconfig.build.json",
+    "build:clean": "tsc --build tsconfig.build.json --clean",
     "watch": "tsc --watch",
     "test": "jest",
     "coverage": "jest --coverage",
