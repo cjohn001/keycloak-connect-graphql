@@ -4,6 +4,16 @@ import {getDirective, MapperKind, mapSchema} from '@graphql-tools/utils';
 
 export type HasRoleResolver = (roles: string | string[]) => (next: Function) => (...params: any[]) => any;
 
+/**
+ * Applies the directive transformers for @auth, @hasRole and @hasPermission to the supplied
+ * schema.
+ *
+ * @param schema
+ */
+export const applyDirectiveTransformers = (schema: GraphQLSchema) => {
+    return permissionDirectiveTransformer(roleDirectiveTransformer(authDirectiveTransformer(schema)));
+};
+
 export const authDirectiveTransformer = (schema: GraphQLSchema, directiveName: string = 'auth') => {
     return mapSchema(schema, {
         [MapperKind.OBJECT_FIELD]: (fieldConfig) => {

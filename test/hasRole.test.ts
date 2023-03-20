@@ -1,8 +1,8 @@
 import {graphql, buildSchema} from 'graphql';
 import {
+  applyDirectiveTransformers,
   CONTEXT_KEY,
-  KeycloakContext,
-  roleDirectiveTransformer
+  KeycloakContext
 } from '../src';
 import {SchemaBase} from './utils/schemaBase';
 
@@ -12,6 +12,7 @@ const RoleSchema = `#graphql
 ${SchemaBase}
 extend type Query {
   hello(what: String="world"): String
+  needsRole: Boolean @hasRole(role: "admin")
 }
 `;
 
@@ -23,7 +24,7 @@ beforeEach(() => {
 });
 
 test('hello should be callable without an access token', async () => {
-  const schema = roleDirectiveTransformer(buildSchema(RoleSchema));
+  const schema = applyDirectiveTransformers(buildSchema(RoleSchema));
 
   const root = {
     'hello': ({what}: {what: string}, _ctx: any) => {
@@ -59,7 +60,7 @@ test('context.kauth.hasRole() is called and returns false', async () => {
   }
   `;
 
-  const schema = roleDirectiveTransformer(buildSchema(sdl));
+  const schema = applyDirectiveTransformers(buildSchema(sdl));
   MockKeycloakContext.isAuthenticated.mockReturnValue(true);
   MockKeycloakContext.hasRole.mockImplementation((role: string) => {
     expect(role).toEqual('admin');
@@ -100,7 +101,7 @@ test('context.kauth.hasRole() is called and returns true', async () => {
   }
   `;
 
-  const schema = roleDirectiveTransformer(buildSchema(sdl));
+  const schema = applyDirectiveTransformers(buildSchema(sdl));
   MockKeycloakContext.isAuthenticated.mockReturnValue(true);
   MockKeycloakContext.hasRole.mockImplementation((role: string) => {
     expect(role).toEqual('admin');
@@ -141,7 +142,7 @@ test('hasRole works on fields that have no resolvers. context.auth.hasRole() is 
   }
   `;
 
-  const schema = roleDirectiveTransformer(buildSchema(sdl));
+  const schema = applyDirectiveTransformers(buildSchema(sdl));
   MockKeycloakContext.isAuthenticated.mockReturnValue(true);
   MockKeycloakContext.hasRole.mockImplementation((role: string) => {
     expect(role).toMatch('staff');
@@ -173,7 +174,7 @@ test('hasRole directive accepts an array of roles', async () => {
   }
   `;
 
-  const schema = roleDirectiveTransformer(buildSchema(sdl));
+  const schema = applyDirectiveTransformers(buildSchema(sdl));
   MockKeycloakContext.isAuthenticated.mockReturnValue(true);
   MockKeycloakContext.hasRole.mockImplementation((role: string) => {
     return role === 'observer';
@@ -197,4 +198,17 @@ test('hasRole directive accepts an array of roles', async () => {
   expect(MockKeycloakContext.hasRole).toHaveBeenCalledWith('staff');
   expect(MockKeycloakContext.hasRole).toHaveBeenCalledWith('admin');
   expect(MockKeycloakContext.hasRole).toHaveBeenCalledWith('observer');
+});
+
+test('caller will not be authenticated if context.kauth is not present', async () => {
+  const schema = applyDirectiveTransformers(buildSchema(RoleSchema));
+  const {errors} = await graphql({
+    schema,
+    source: `#graphql
+    query NeedsRole {needsRole}
+    `,
+    rootValue: {},
+    contextValue: {}
+  });
+  expect(errors?.[0]?.message).toMatch(/user not authenticated/i);
 });

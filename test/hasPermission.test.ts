@@ -1,4 +1,4 @@
-import {KeycloakContext, permissionDirectiveTransformer, CONTEXT_KEY} from '../src';
+import {KeycloakContext, CONTEXT_KEY, applyDirectiveTransformers} from '../src';
 import {SchemaBase} from './utils/schemaBase';
 import {buildSchema, graphql} from 'graphql';
 
@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 test('context.auth.hasPermission() is called and protected resolver is called when authorised', async () => {
-    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+    const schema = applyDirectiveTransformers(buildSchema(PermissionSchema));
 
     const root = {
         requiresPermission: jest.fn()
@@ -46,7 +46,7 @@ test('context.auth.hasPermission() is called and protected resolver is called wh
 });
 
 test('hasPermission works on fields that have no resolvers. context.auth.hasPermission() is called', async () => {
-    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+    const schema = applyDirectiveTransformers(buildSchema(PermissionSchema));
 
     MockKeycloakContext.isAuthenticated.mockReturnValue(true);
     MockKeycloakContext.hasPermission.mockResolvedValue(true);
@@ -75,7 +75,7 @@ test('hasPermission accepts an array of permissions', async () => {
     }
     `;
 
-    const schema = permissionDirectiveTransformer(buildSchema(sdl));
+    const schema = applyDirectiveTransformers(buildSchema(sdl));
 
     MockKeycloakContext.isAuthenticated.mockReturnValue(true);
     MockKeycloakContext.hasPermission.mockImplementation(async (resources: string|string[]) => {
@@ -105,7 +105,7 @@ test('hasPermission accepts an array of permissions', async () => {
 });
 
 test('if there is no authentication an error is returned and the original resolver will not execute', async () => {
-    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+    const schema = applyDirectiveTransformers(buildSchema(PermissionSchema));
     const {errors} = await graphql({
         schema,
         source: `#graphql
@@ -118,7 +118,7 @@ test('if there is no authentication an error is returned and the original resolv
 });
 
 test('if token does not have the required permission, then an error is returned and the original resolver will not execute', async () => {
-    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+    const schema = applyDirectiveTransformers(buildSchema(PermissionSchema));
 
     const root = {
         requiresPermission: jest.fn()

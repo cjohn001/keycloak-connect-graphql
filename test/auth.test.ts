@@ -1,4 +1,4 @@
-import {authDirectiveTransformer, CONTEXT_KEY, KeycloakContext} from '../src';
+import {applyDirectiveTransformers, CONTEXT_KEY, KeycloakContext} from '../src';
 import {buildSchema, graphql} from 'graphql';
 import {SchemaBase} from './utils/schemaBase';
 
@@ -18,7 +18,7 @@ beforeEach(() => {
 });
 
 test('context.kauth.isAuthenticated() is called, then original resolver is called', async () => {
-    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    const schema = applyDirectiveTransformers(buildSchema(AuthSchema));
     MockKeycloakContext.isAuthenticated.mockReturnValue(true);
 
     const root = {
@@ -41,7 +41,7 @@ test('context.kauth.isAuthenticated() is called, then original resolver is calle
 });
 
 test('context.kauth.isAuthenticated() is called, even if field has no resolver', async () => {
-    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    const schema = applyDirectiveTransformers(buildSchema(AuthSchema));
     MockKeycloakContext.isAuthenticated.mockReturnValue(true);
 
     await graphql({
@@ -58,7 +58,7 @@ test('context.kauth.isAuthenticated() is called, even if field has no resolver',
 });
 
 test('caller will not be authenticated if context.kauth is not present', async () => {
-    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    const schema = applyDirectiveTransformers(buildSchema(AuthSchema));
     const {errors} = await graphql({
         schema,
         source: `#graphql
@@ -71,7 +71,7 @@ test('caller will not be authenticated if context.kauth is not present', async (
 });
 
 test('call will fail if context.kauth.isAuthenticated returns false', async () => {
-    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    const schema = applyDirectiveTransformers(buildSchema(AuthSchema));
     MockKeycloakContext.isAuthenticated.mockReturnValue(false);
 
     const {errors} = await graphql({
