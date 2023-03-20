@@ -1,6 +1,5 @@
-.circleci/
-.nyc_output/
 .vscode/
+.idea/
 # were not publishing source so we don't need source maps either
 dist/*.js.map
 examples/
