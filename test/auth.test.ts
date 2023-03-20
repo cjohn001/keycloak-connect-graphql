@@ -1,182 +1,89 @@
-import test from 'ava'
-import sinon from 'sinon'
+import {authDirectiveTransformer, CONTEXT_KEY, KeycloakContext} from '../src';
+import {buildSchema, graphql} from 'graphql';
+import {SchemaBase} from './utils/schemaBase';
 
-import { GraphQLSchema } from 'graphql'
-import { VisitableSchemaType } from '@graphql-tools/utils'
-import { AuthDirective } from '../src/directives/schemaDirectiveVisitors'
+jest.mock('../src/KeycloakContext');
 
-import { KeycloakContext, GrantedRequest } from '../src/KeycloakContext'
-
-const createHasRoleDirective = () => {
-  return new AuthDirective({
-    name: 'testAuthDirective',
-    args: {},
-    visitedType: ({} as VisitableSchemaType),
-    schema: ({} as GraphQLSchema),
-    context: []
-  })
+const AuthSchema = `#graphql
+${SchemaBase}
+extend type Query {
+    protected: Boolean @auth
 }
+`;
 
-test('happy path: context.kauth.isAuthenticated() is called, then original resolver is called', async (t) => {
-  const directive = createHasRoleDirective()
+const MockKeycloakContext = jest.mocked(new KeycloakContext({req: {} as any}));
 
-  const field = {
-    resolve: (root: any, args: any, context: any, info: any) => {
-      t.pass()
-    },
-    name: 'testField'
-  }
+beforeEach(() => {
+    MockKeycloakContext.isAuthenticated.mockReset();
+});
 
-  const resolverSpy = sinon.spy(field, 'resolve')
+test('context.kauth.isAuthenticated() is called, then original resolver is called', async () => {
+    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    MockKeycloakContext.isAuthenticated.mockReturnValue(true);
 
-  directive.visitFieldDefinition(field)
+    const root = {
+        protected: jest.fn()
+    };
 
-  const root = {}
-  const args = {}
-  const req = {
-    kauth: {
-      grant: {
-        access_token: {
-          isExpired: () => {
-            return false
-          }
+    await graphql({
+        schema,
+        source: `#graphql
+        query Protected {protected}
+        `,
+        rootValue: root,
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
-      }
-    }
-  } as GrantedRequest
+    });
 
-  const context = {
-    request: req,
-    kauth: new KeycloakContext({ req })
-  }
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+    expect(root.protected).toHaveBeenCalled();
+});
 
-  const isAuthenticatedSpy = sinon.spy(context.kauth, 'isAuthenticated')
+test('context.kauth.isAuthenticated() is called, even if field has no resolver', async () => {
+    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    MockKeycloakContext.isAuthenticated.mockReturnValue(true);
 
-  const info = {
-    parentType: {
-      name: 'testParent'
-    }
-  }
-
-  await field.resolve(root, args, context, info)
-  
-  t.truthy(isAuthenticatedSpy.called)
-  t.truthy(resolverSpy.called)
-})
-
-test('context.kauth.isAuthenticated() is called, even if field has no resolver', async (t) => {
-  const directive = createHasRoleDirective()
-
-  const field = {
-    name: 'testField'
-  }
-
-  directive.visitFieldDefinition(field)
-
-  const root = {}
-  const args = {}
-  const req = {
-    kauth: {
-      grant: {
-        access_token: {
-          isExpired: () => {
-            return false
-          }
+    await graphql({
+        schema,
+        source: `#graphql
+        query Protected {protected}
+        `,
+        rootValue: {},
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
-      }
-    }
-  } as GrantedRequest
+    });
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+});
 
-  const context = {
-    request: req,
-    kauth: new KeycloakContext({ req })
-  }
+test('caller will not be authenticated if context.kauth is not present', async () => {
+    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query Protected {protected}
+        `,
+        rootValue: {},
+        contextValue: {}
+    });
+    expect(errors?.[0]?.message).toMatch(/user not authenticated/i);
+});
 
-  const isAuthenticatedSpy = sinon.spy(context.kauth, 'isAuthenticated')
+test('call will fail if context.kauth.isAuthenticated returns false', async () => {
+    const schema = authDirectiveTransformer(buildSchema(AuthSchema));
+    MockKeycloakContext.isAuthenticated.mockReturnValue(false);
 
-  const info = {
-    parentType: {
-      name: 'testParent'
-    }
-  }
-
-  //@ts-ignore
-  await field.resolve(root, args, context, info)
-  
-  t.truthy(isAuthenticatedSpy.called)
-})
-
-test('resolver will throw if context.kauth is not present', async (t) => {
-  const directive = createHasRoleDirective()
-
-  const field = {
-    resolve: (root: any, args: any, context: any, info: any) => {
-      t.fail()
-    },
-    name: 'testField'
-  }
-
-  directive.visitFieldDefinition(field)
-
-  const root = {}
-  const args = {}
-  const req = {
-    kauth: {
-      grant: {
-        access_token: {
-          isExpired: () => {
-            return false
-          }
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query Protected {protected}
+        `,
+        rootValue: {},
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
-      }
-    }
-  } as GrantedRequest
-
-  const context = {
-    request: req
-  }
-
-  const info = {
-    parentType: {
-      name: 'testParent'
-    }
-  }
-
-  await t.throwsAsync(async () => {
-    await field.resolve(root, args, context, info)
-  }, 'User not Authenticated')
-})
-
-test('resolver will throw if context.kauth present but context.kauth.isAuthenticated returns false', async (t) => {
-  const directive = createHasRoleDirective()
-
-  const field = {
-    resolve: (root: any, args: any, context: any, info: any) => {
-      t.fail()
-    },
-    name: 'testField'
-  }
-
-  directive.visitFieldDefinition(field)
-
-  const root = {}
-  const args = {}
-  const req = {} as GrantedRequest
-
-  const context = {
-    request: req,
-    kauth: {
-      isAuthenticated: () => false
-    }
-  }
-
-  const info = {
-    parentType: {
-      name: 'testParent'
-    }
-  }
-
-  await t.throwsAsync(async () => {
-    await field.resolve(root, args, context, info)
-  }, 'User not Authenticated')
-})
+    });
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+    expect(errors?.[0]?.message).toMatch(/user not authenticated/i);
+});

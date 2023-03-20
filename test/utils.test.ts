@@ -1,48 +1,43 @@
-import test from 'ava'
-import { isAuthorizedByRole } from '../src/directives/utils'
-import Keycloak from 'keycloak-connect'
-import { KeycloakContextBase } from '../src/KeycloakContext'
+import {CONTEXT_KEY, isAuthorizedByRole} from '../src';
+import Keycloak from 'keycloak-connect';
+import {KeycloakContextBase} from '../src';
 
-test('isAuthorizedByRole returns the result of token.hasRole', (t) => {
-  t.plan(4)
-  const token = {
-    hasRole: (role: string) => {
-      t.pass()
-      return role === 'c'
-    },
-    isExpired: () => {
-      return false
-    }
-  } as Keycloak.Token
+console.error = jest.fn();
 
-  const context = { kauth: new KeycloakContextBase(token) } 
-  
-  t.truthy(isAuthorizedByRole(['a', 'b', 'c'], context))
-})
+test('isAuthorizedByRole returns the result of token.hasRole', () => {
+    const token = {
+        hasRole: jest.fn((role: string) => {
+            return role === 'c';
+        }),
+        isExpired: () => {
+            return false;
+        }
+    } as unknown as Keycloak.Token;
 
-test('isAuthorizedByRole returns false if hasRole returns false', (t) => {
-  t.plan(4)
-  const token = {
-    hasRole: (role: string) => {
-      t.pass()
-      return false
-    },
-    isExpired: () => {
-      return false
-    }
-  } as Keycloak.Token
+    const context = {[CONTEXT_KEY]: new KeycloakContextBase(token)};
+    expect(isAuthorizedByRole(['a', 'b', 'c'], context)).toBeTruthy();
+    expect(token.hasRole).toHaveBeenCalledTimes(3);
+});
 
-  const context = { kauth: new KeycloakContextBase(token) } 
-  
-  t.falsy(isAuthorizedByRole(['a', 'b', 'c'], context))
-})
+test('isAuthorizedByRole returns false if hasRole returns false', () => {
+    const token = {
+        hasRole: jest.fn((_role: string) => {
+            return false;
+        }),
+        isExpired: () => {
+            return false;
+        }
+    } as unknown as Keycloak.Token;
 
-test('isAuthorizedByRole returns false if context is empty', (t) => {
-  const context = { } 
-  t.falsy(isAuthorizedByRole(['a', 'b', 'c'], context))
-})
+    const context = {[CONTEXT_KEY]: new KeycloakContextBase(token)};
+    expect(isAuthorizedByRole(['a', 'b', 'c'], context)).toBeFalsy();
+});
 
-test('isAuthorizedByRole returns false if context undefined', (t) => {
-  const context = { } 
-  t.falsy(isAuthorizedByRole(['a', 'b', 'c'], undefined))
-})
+test('isAuthorizedByRole returns false if context is empty', () => {
+    const context = {};
+    expect(isAuthorizedByRole(['a', 'b', 'c'], context)).toBeFalsy();
+});
+
+test('isAuthorizedByRole returns false if context undefined', () => {
+    expect(isAuthorizedByRole(['a', 'b', 'c'], undefined)).toBeFalsy();
+});

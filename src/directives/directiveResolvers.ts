@@ -1,5 +1,5 @@
-import { CONTEXT_KEY } from '../KeycloakContext'
-import { isAuthorizedByRole } from './utils'
+import {CONTEXT_KEY} from '../KeycloakContext';
+import {isAuthorizedByRole} from './utils';
 
 /**
  *
@@ -27,27 +27,27 @@ import { isAuthorizedByRole } from './utils'
  * }
  *
  * const server = new ApolloServer({
-  *   typeDefs,
-  *   resolvers,
-  *   schemaDirectives: [KeycloakSchemaDirectives],
-  *   context: ({ req }) => {
-   *     return {
-   *       kauth: new KeycloakContext({ req })
-   *     }
-   *   }
-  * })
+ *   typeDefs,
+ *   resolvers,
+ *   schemaDirectives: [KeycloakSchemaDirectives],
+ *   context: ({ req }) => {
+ *     return {
+ *       kauth: new KeycloakContext({ req })
+ *     }
+ *   }
+ * })
  * ```
  *
  */
 export const auth = (next: Function) => (...params: any[]) => {
-  let context = params[2]
-  if (!context[CONTEXT_KEY] || !context[CONTEXT_KEY].isAuthenticated()) {
-    const error: any = new Error(`User not Authenticated`);
-    error.code = "UNAUTHENTICATED"
-    throw error
-  }
-  return next.apply( null, params )
-}
+    const context: any = params[2];
+    if (!context[CONTEXT_KEY] || !context[CONTEXT_KEY].isAuthenticated()) {
+        const error: any = new Error(`User not Authenticated`);
+        error.code = 'UNAUTHENTICATED';
+        throw error;
+    }
+    return next.apply(null, params);
+};
 
 /**
  *
@@ -64,7 +64,7 @@ export const auth = (next: Function) => (...params: any[]) => {
  *
  * It also is possible to check for realm roles and application roles.
  * * `hasRole('realm:admin')` will check the logged in user has the admin realm role
- * * `hasRole('some-other-app:admin')` will check the loged in user has the admin realm role in a different application
+ * * `hasRole('some-other-app:admin')` will check the logged in user has the admin realm role in a different application
  *
  *
  * Example usage:
@@ -89,33 +89,33 @@ export const auth = (next: Function) => (...params: any[]) => {
  *   resolvers,
  *   schemaDirectives: [KeycloakSchemaDirectives],
  *   context: ({ req }) => {
-  *     return {
-  *       kauth: new KeycloakContext({ req })
-  *     }
-  *   }
+ *     return {
+ *       kauth: new KeycloakContext({ req })
+ *     }
+ *   }
  * })
  * ```
  */
-export const hasRole = (roles: Array<string>) => (next: Function) => (...params: any[]) => {
-  let context = params[2]
-  if (!context[CONTEXT_KEY] || !context[CONTEXT_KEY].isAuthenticated()) {
-    const error: any = new Error(`User not Authenticated`);
-    error.code = "UNAUTHENTICATED"
-    throw error
-  }
+export const hasRole = (roles: string|string[]) => (next: Function) => (...params: any[]) => {
+    const context: any = params[2];
+    if (!context[CONTEXT_KEY] || !context[CONTEXT_KEY].isAuthenticated()) {
+        const error: any = new Error(`User not Authenticated`);
+        error.code = 'UNAUTHENTICATED';
+        throw error;
+    }
 
-  if (typeof roles === 'string') {
-    roles = [roles]
-  }
+    if (typeof roles === 'string') {
+        roles = [roles];
+    }
 
-  if (!isAuthorizedByRole(roles, context)) {
-    const error: any = new Error(`User is not authorized. Must have one of the following roles: [${roles}]`);
-    error.code = "FORBIDDEN"
-    throw error
-  }
+    if (!isAuthorizedByRole(roles, context)) {
+        const error: any = new Error(`User is not authorized. Must have one of the following roles: [${roles}]`);
+        error.code = 'FORBIDDEN';
+        throw error;
+    }
 
-  return next.apply( null, params )
-}
+    return next.apply(null, params);
+};
 
 /**
  *
@@ -149,26 +149,26 @@ export const hasRole = (roles: Array<string>) => (next: Function) => (...params:
  *   resolvers,
  *   schemaDirectives: [KeycloakSchemaDirectives],
  *   context: ({ req }) => {
-  *     return {
-  *       kauth: new KeycloakContext({ req }, keycloak)
-  *     }
-  *   }
+ *     return {
+ *       kauth: new KeycloakContext({ req }, keycloak)
+ *     }
+ *   }
  * })
  * ```
  */
-export const hasPermission = (permissions: Array<string>) => (next: Function) => async (...params: any[]) => {
-  let context = params[2]
-  if (!context[CONTEXT_KEY] || !context[CONTEXT_KEY].isAuthenticated()) {
-    const error: any = new Error(`User not Authenticated`);
-    error.code = "UNAUTHENTICATED"
-    throw error
-  }
+export const hasPermission = (permissions: string[]) => (next: Function) => async (...params: any[]) => {
+    const context: any = params[2];
+    if (!context[CONTEXT_KEY] || !context[CONTEXT_KEY].isAuthenticated()) {
+        const error: any = new Error(`User not Authenticated`);
+        error.code = 'UNAUTHENTICATED';
+        throw error;
+    }
 
-  if (!await context.kauth.hasPermission(permissions)) {
-    const error: any = new Error(`User is not authorized. Must have the following permissions: [${permissions}]`);
-    error.code = "FORBIDDEN"
-    throw error
-  }
+    if (!await context.kauth.hasPermission(permissions)) {
+        const error: any = new Error(`User is not authorized. Must have the following permissions: [${permissions}]`);
+        error.code = 'FORBIDDEN';
+        throw error;
+    }
 
-  return next.apply( null, params )
-}
+    return next.apply(null, params);
+};

@@ -8,7 +8,7 @@
   "rules": {
     "semicolon": [
       true,
-      "never"
+      "always"
     ],
     "quotemark": [
       true,

@@ -1,433 +1,145 @@
-import test from 'ava'
-import sinon from 'sinon'
+import {KeycloakContext, permissionDirectiveTransformer, CONTEXT_KEY} from '../src';
+import {SchemaBase} from './utils/schemaBase';
+import {buildSchema, graphql} from 'graphql';
 
-import { GraphQLSchema } from 'graphql'
-import { VisitableSchemaType } from '@graphql-tools/utils'
-import { HasPermissionDirective } from '../src/directives/schemaDirectiveVisitors'
-import { KeycloakContext, GrantedRequest } from '../src/KeycloakContext'
-import Keycloak, { AuthZRequest, Grant } from 'keycloak-connect'
+jest.mock('../src/KeycloakContext');
 
-import * as express from 'express'
-import { AuthorizationConfiguration } from '../src/KeycloakPermissionsHandler'
+const MockKeycloakContext = jest.mocked(new KeycloakContext({req: {} as any}));
 
-const createHasPermissionDirective = (directiveArgs: any) => {
-  return new HasPermissionDirective({
-    name: 'testHasPermissionDirective',
-    args: directiveArgs,
-    visitedType: ({} as VisitableSchemaType),
-    schema: ({} as GraphQLSchema),
-    context: []
-  })
+const PermissionSchema = `#graphql
+${SchemaBase}
+extend type Query {
+    requiresPermission: Boolean @hasPermission(resources: "article")
 }
+`;
 
-test('context.auth.hasPermission() is called', async (t) => {
-  t.plan(1)
-  const directiveArgs = {
-    resources: 'Artical'
-  }
+beforeEach(() => {
+    MockKeycloakContext.isAuthenticated.mockReset();
+    MockKeycloakContext.hasPermission.mockReset();
+});
 
-  const directive = createHasPermissionDirective(directiveArgs)
+test('context.auth.hasPermission() is called and protected resolver is called when authorised', async () => {
+    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
 
-  const field = {
-    resolve: (root: any, args: any, context: any, info: any) => {
-      t.pass()
-    },
-    name: 'testField'
-  }
+    const root = {
+        requiresPermission: jest.fn()
+    };
 
-  directive.visitFieldDefinition(field)
+    MockKeycloakContext.isAuthenticated.mockReturnValue(true);
+    MockKeycloakContext.hasPermission.mockResolvedValue(true);
 
-  const root = {}
-  const args = {}
-  const keycloak = {
-    checkPermissions(authzRequest: AuthZRequest, request: express.Request, callback?: (json: any) => any): Promise<Grant> {
-        return new Promise<Grant>((resolve, reject) => {
-            const result = {
-                access_token: {
-                    hasPermission: (r: string, s: string | undefined): boolean => {
-                        return true
-                    }
-                }
-            } as unknown as Grant
-            return resolve(result)
-        })
-      }
-    } as Keycloak.Keycloak
-    const req = {
-        kauth: {
-            grant: {
-                access_token: {
-                    hasPermission: (r: string, s: string | undefined): boolean => {
-                        return false
-                    },
-                    isExpired: () => {
-                        return false
-                    }
-                }
-            }
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query RequiresPermission {requiresPermission}
+        `,
+        rootValue: root,
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
-    } as unknown as GrantedRequest
+    });
 
-    const config = {
-        resource_server_id: 'resource-server'
-    } as AuthorizationConfiguration
-  
-    const context = {
-        request: req,
-        kauth: new KeycloakContext({ req }, keycloak, config)
-    }
+    expect(errors).toBeUndefined();
+    expect(root.requiresPermission).toHaveBeenCalled();
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+    expect(MockKeycloakContext.hasPermission).toHaveBeenCalledWith(['article']);
+});
 
-    const info = {
-        parentType: {
-            name: 'testParent'
+test('hasPermission works on fields that have no resolvers. context.auth.hasPermission() is called', async () => {
+    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+
+    MockKeycloakContext.isAuthenticated.mockReturnValue(true);
+    MockKeycloakContext.hasPermission.mockResolvedValue(true);
+
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query RequiresPermission {requiresPermission}
+        `,
+        rootValue: {},
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
+    });
+
+    expect(errors).toBeUndefined();
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+    expect(MockKeycloakContext.hasPermission).toHaveBeenCalledWith(['article']);
+});
+
+test('hasPermission accepts an array of permissions', async () => {
+    const sdl = `#graphql
+    ${PermissionSchema}
+    extend type Query {
+        multiplePermissions: Boolean @hasPermission(resources: ["article:view","article:edit","article:delete"])
     }
-  
-    await field.resolve(root, args, context, info)
-})
+    `;
 
-test('hasPermission works on fields that have no resolvers. context.auth.hasPermission() is called', async (t) => {
-    t.plan(1)
-    const directiveArgs = {
-        resources: 'Article:view'
-    }
+    const schema = permissionDirectiveTransformer(buildSchema(sdl));
 
-    const directive = createHasPermissionDirective(directiveArgs)
-    const field = {
-        name: 'testField'
-    }
+    MockKeycloakContext.isAuthenticated.mockReturnValue(true);
+    MockKeycloakContext.hasPermission.mockImplementation(async (resources: string|string[]) => {
+        return resources.includes('article:delete');
+    });
 
-    directive.visitFieldDefinition(field)
+    const root = {
+        multiplePermissions: jest.fn()
+    };
 
-    const root = {}
-    const args = {}
-    const keycloak = {
-        checkPermissions(authzRequest: AuthZRequest, request: express.Request, callback?: (json: any) => any): Promise<Grant> {
-            return new Promise<Grant>((resolve, reject) => {
-                const result = {
-                    access_token: {
-                        hasPermission: (r: string, s: string | undefined): boolean => {
-                            return true
-                        }
-                    }
-                } as unknown as Grant
-                return resolve(result)
-            })
-          }
-    } as Keycloak.Keycloak
-
-    const config = {
-        resource_server_id: 'resource-server'
-    } as AuthorizationConfiguration
-
-    const req = {
-        kauth: {
-            grant: {
-                access_token: {
-                    hasPermission: (r: string, s: string | undefined): boolean => {
-                        t.pass()
-                        return true
-                    },
-                    isExpired: () => {
-                        return false
-                    }
-                }
-            }
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query MultiplePermissions {multiplePermissions}
+        `,
+        rootValue: root,
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
-    } as unknown as GrantedRequest
+    });
 
-    const context = {
-        request: req,
-        kauth: new KeycloakContext({ req }, keycloak, config)
-    }
+    expect(errors).toBeUndefined();
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+    expect(MockKeycloakContext.hasPermission).toHaveBeenCalledTimes(1);
+    expect(MockKeycloakContext.hasPermission).toHaveBeenCalledWith(['article:view', 'article:edit', 'article:delete']);
+    expect(root.multiplePermissions).toHaveBeenCalled();
+});
 
-    const info = {
-        parentType: {
-            name: 'testParent'
+test('if there is no authentication an error is returned and the original resolver will not execute', async () => {
+    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query RequiresPermission {requiresPermission}
+        `,
+        rootValue: {},
+        contextValue: {}
+    });
+    expect(errors?.[0]?.message).toMatch(/user not authenticated/i);
+});
+
+test('if token does not have the required permission, then an error is returned and the original resolver will not execute', async () => {
+    const schema = permissionDirectiveTransformer(buildSchema(PermissionSchema));
+
+    const root = {
+        requiresPermission: jest.fn()
+    };
+
+    MockKeycloakContext.isAuthenticated.mockReturnValue(true);
+    MockKeycloakContext.hasPermission.mockResolvedValue(false);
+
+    const {errors} = await graphql({
+        schema,
+        source: `#graphql
+        query RequiresPermission {requiresPermission}
+        `,
+        rootValue: root,
+        contextValue: {
+            [CONTEXT_KEY]: MockKeycloakContext
         }
-    }
+    });
 
-    //@ts-ignore
-    await field.resolve(root, args, context, info)
-})
-
-test('visitFieldDefinition accepts an array of permissions', async (t) => {
-    t.plan(2)
-    const directiveArgs = {
-        resources: ['Article:view', 'Article:write', 'Article:delete']
-    }
-
-    const directive = createHasPermissionDirective(directiveArgs)
-
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            t.pass()
-        },
-        name: 'testField'
-    }
-
-    directive.visitFieldDefinition(field)
-
-    const root = {}
-    const args = {}
-    const keycloak = {
-        checkPermissions(authzRequest: AuthZRequest, request: express.Request, callback?: (json: any) => any): Promise<Grant> {
-            return new Promise<Grant>((resolve, reject) => {
-                const result = {
-                    access_token: {
-                        hasPermission: (r: string, s: string | undefined): boolean => {
-                            return true
-                        }
-                    }
-                } as unknown as Grant
-                return resolve(result)
-            })
-        }
-    } as Keycloak.Keycloak
-
-    const config = {
-        resource_server_id: 'resource-server'
-    } as AuthorizationConfiguration
-
-    const req = {
-        kauth: {
-            grant: {
-                access_token: {
-                    hasPermission: (r: string, s: string | undefined): boolean => {
-                        t.pass()
-                        return r === 'Article' && s === 'write'
-                    },
-                    isExpired: () => {
-                        return false
-                    }
-                }
-            }
-        }
-    } as unknown as GrantedRequest
-  
-    const context = {
-        request: req,
-        kauth: new KeycloakContext({ req }, keycloak, config)
-    }
-
-    const info = {
-        parentType: {
-            name: 'testParent'
-        }
-    }
-
-    await field.resolve(root, args, context, info)
-})
-
-test('if there is no authentication, then an error is returned and the original resolver will not execute', async (t) => {
-    const directiveArgs = {
-        resources: 'Article'
-    }
-
-    const directive = createHasPermissionDirective(directiveArgs)
-    
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            return new Promise((resolve, reject) => {
-                t.fail('the original resolver should never be called when an auth error is thrown')
-                return reject(new Error('the original resolver should never be called when an auth error is thrown'))
-            })
-        },
-        name: 'testField'
-    }
-
-    directive.visitFieldDefinition(field)
-
-    const root = {}
-    const args = {}
-    const keycloak = {
-        checkPermissions(authzRequest: AuthZRequest, request: express.Request, callback?: (json: any) => any): Promise<Grant> {
-            return new Promise<Grant>((resolve, reject) => {
-                const result = {
-                    access_token: {
-                        hasPermission: (r: string, s: string | undefined): boolean => {
-                            return true
-                        }
-                    }
-                } as unknown as Grant
-                return resolve(result)
-            })
-        }
-    } as Keycloak.Keycloak
-
-    const config = {
-        resource_server_id: 'resource-server'
-    } as AuthorizationConfiguration
-    
-    const req = {} as GrantedRequest
-    const context = {
-        request: req,
-        kauth: new KeycloakContext({ req }, keycloak, config)
-    }
-
-    const info = {
-        parentType: {
-            name: 'testParent'
-        }
-    }
-
-    await t.throwsAsync(async () => {
-        await field.resolve(root, args, context, info)
-    }, `User not Authenticated`)
-})
-
-test('if token does not have the required permission, then an error is returned and the original resolver will not execute', async (t) => {
-    const directiveArgs = {
-        resources: 'Article:view'
-    }
-
-    const directive = createHasPermissionDirective(directiveArgs)
-
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            return new Promise((resolve, reject) => {
-                t.fail('the original resolver should never be called when an auth error is thrown')
-                return reject(new Error('the original resolver should never be called when an auth error is thrown'))
-            })
-        }
-    }
-
-    directive.visitFieldDefinition(field)
-
-    const root = {}
-    const args = {}
-
-    const keycloak = {
-        checkPermissions(authzRequest: AuthZRequest, request: express.Request, callback?: (json: any) => any): Promise<Grant> {
-            return new Promise<Grant>((resolve, reject) => {
-                const result = {
-                    access_token: {
-                        hasPermission: (r: string, s: string | undefined): boolean => {
-                            return true
-                        }
-                    }
-                } as unknown as Grant
-                return resolve(result)
-            })
-        }
-    } as Keycloak.Keycloak
-
-    const config = {
-        resource_server_id: 'resource-server'
-    } as AuthorizationConfiguration
-        
-    const req = {
-        kauth: {
-            grant: {
-                access_token: {
-                    hasPermission: (resources: string) => {
-                        t.deepEqual(resources, directiveArgs.resources)
-                        return false
-                    },
-                    isExpired: () => {
-                        return false
-                    }
-                }
-            }
-        }
-    } as unknown as GrantedRequest
-
-    const context = {
-        request: req,
-        kauth: new KeycloakContext({ req })
-    }
-
-    const info = {
-        fieldName: 'testField',
-        parentType: {
-        name: 'testParent'
-        }
-    }
-
-    await t.throwsAsync(async () => {
-        await field.resolve(root, args, context, info)
-    }, `User is not authorized. Must have the following permissions: [${directiveArgs.resources}]`)
-})
-
-test('hasPermission does not allow unknown arguments, visitFieldDefinition will throw', async (t) => {
-    const directiveArgs = {
-        resources: 'Article:view',
-        some: 'unknown arg'
-    }
-
-    const directive = createHasPermissionDirective(directiveArgs)
-
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            return new Promise((resolve, reject) => {
-                t.fail('the original resolver should never be called')
-            })
-        },
-        name: 'testField'
-    }
-
-    t.throws(() => {
-        directive.visitFieldDefinition(field)
-    })
-})
-
-test('hasPermission does not allow a non string value for resources, visitFieldDefinition will throw', async (t) => {
-    const directiveArgs = {
-        resources: 123
-    }
-
-    const directive = createHasPermissionDirective(directiveArgs)
-
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            return new Promise((resolve, reject) => {
-                t.fail('the original resolver should never be called')
-            })
-        },
-        name: 'testField'
-    }
-
-    t.throws(() => {
-        directive.visitFieldDefinition(field)
-    })
-})
-
-test('hasPermission must contain resources arg, visitFieldDefinition will throw', async (t) => {
-    const directiveArgs = {}
-
-    const directive = createHasPermissionDirective(directiveArgs)
-
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            return new Promise((resolve, reject) => {
-                t.fail('the original resolver should never be called')
-            })
-        },
-        name: 'testField'
-    }
-
-    t.throws(() => {
-        directive.visitFieldDefinition(field)
-    })
-})
-
-test('hasPermission resources arg can be an array, visitFieldDefinition will not throw', async (t) => {
-    const directiveArgs = {
-        resources: ['Article:view', 'Blog']
-    }
-
-    const directive = createHasPermissionDirective(directiveArgs)
-    
-    const field = {
-        resolve: (root: any, args: any, context: any, info: any) => {
-            return new Promise((resolve, reject) => {
-                t.fail('the original resolver should never be called')
-            })
-        },
-        name: 'testField'
-    }
-
-    t.notThrows(() => {
-        directive.visitFieldDefinition(field)
-    })
-})
+    expect(errors?.[0].message).toMatch(/user is not authorized. must have the following permissions: \[article]/i);
+    expect(root.requiresPermission).not.toHaveBeenCalled();
+    expect(MockKeycloakContext.isAuthenticated).toHaveBeenCalled();
+    expect(MockKeycloakContext.hasPermission).toHaveBeenCalledWith(['article']);
+});
